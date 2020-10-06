@@ -1,3 +1,4 @@
+#include "mpi.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
@@ -197,7 +198,7 @@ void TSP_Serial_DP(double** distances, int length, vector<int>* path, double* co
     TSP_Serial_DP(distances, length, path, cost, ncity, visited);
 }
 
-// TODO CHECK ALL OPENMP FOR ACTUAL ACCURACY
+// TODO CHECK ALL OPENMP FOR ACTUAL ACCURACY -- race condition probably in gamestop :)
 
 void TSP_MP_EMST(vector<City> cities, double** distances, vector<int>* path, double* cost)
 {
@@ -255,20 +256,122 @@ void TSP_MP_EMST(vector<City> cities, double** distances, vector<int>* path, dou
     // printMST(parent, cities, distances);
 }
 
-void TSP_MP_DP(double** distances, int length, vector<int>* path, double* cost, bool* visited)
-{
 
+
+int get_lowest_weights_city_number_in_parallel(double** distances, int c, bool* visited, int length, double* cost)
+{
+    double kmin;
+    int nc = 999;
+    double min = 999;
+
+    #pragma omp parallel for
+    for(int i = 0; i < length; i++)
+    {
+        if((distances[c][i] != 0) && (visited[i] == false))
+        {
+            if(distances[c][i] + distances[i][c] < min)
+            {
+                min = distances[i][0] + distances[c][i];
+                kmin = distances[c][i];
+                nc = i;
+            }
+        }
+    }
+    if(min != 999)
+    {
+        (*cost) += kmin;
+    }
+    return nc;
 }
 
-void TSP_Parallel_EMST(vector<City> cities, double** distances, vector<int>* path, double* cost)
-{
 
+
+
+void TSP_MP_DP(double** distances, int length, vector<int>* path, double* cost, int city, bool* visited)
+{
+    int ncity;
+    visited[city] = true;
+    path->push_back(city+1);
+    ncity = get_lowest_weights_city_number_in_parallel(distances, city, visited, length, cost);
+    if(ncity == 999)
+    {
+        ncity = 0;
+        (*cost) += distances[city][ncity];
+        return;
+    }
+    // cout << "ncity: "<< ncity << endl;
+    TSP_MP_DP(distances, length, path, cost, ncity, visited);
 }
 
-void TSP_Parallel_DP(vector<City> cities, double** distances, vector<int>* path, double* cost)
+void TSP_MPI_EMST(vector<City> cities, double** distances, vector<int>* path, double* cost)
 {
+    double parent[cities.size()];
+    double key[cities.size()];
+    bool mstSet[cities.size()];
+    bool visited[cities.size()];
+    
+    // init all keys as INF
+    for(int i = 0; i < cities.size(); i++)
+    {
+        key[i] = INT_MAX;
+        mstSet[i] = false;
+    }
 
+    key[0] = 0;
+    parent[0] = -1; // first node is always root of MST
+
+    for(int i = 0; i < cities.size(); i++)
+    {
+        int u = minKey(key, mstSet, cities);
+        mstSet[u] = true;
+
+        for(int j = 0; j < cities.size(); j++)
+        {
+            if (distances[u][j] && mstSet[j] == false && distances[u][j] < key[j])
+            {
+                parent[j] = u, key[j] = distances[u][j];
+            }
+        }
+    }
+
+    for(int i = 0; i < cities.size(); i++)
+    {
+        visited[i] = false;
+    }
+    gamestop(cities, parent, visited, distances, 0, path, cost);
+    // printMST(parent, cities, distances);
 }
+
+void TSP_MPI_DP(double** distances, int length, vector<int>* path, double* cost, int city, bool* visited)
+{  
+    int ncity;
+    visited[city] = true;
+    path->push_back(city+1);
+    ncity = get_lowest_weights_city_number(distances, city, visited, length, cost);
+    if(ncity == 999)
+    {
+        ncity = 0;
+        (*cost) += distances[city][ncity];
+        return;
+    }
+    // cout << "ncity: "<< ncity << endl;
+    TSP_MPI_DP(distances, length, path, cost, ncity, visited);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 int main(int argc, char* argv[])
 {
@@ -295,10 +398,28 @@ int main(int argc, char* argv[])
     bool visited[length];
     int location = 0;
     double cost = 0.00;
+    for(int q = 0; q < length; q++)
+    {
+        visited[q] = false;
+    }
 
     computeEuclideanDistanceMatrix(cities, distances);
 
     struct timespec start, end;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     //--------------------------- Euclidean Min Span Tree ------------------------------------------
 
@@ -309,18 +430,37 @@ int main(int argc, char* argv[])
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     uint64_t diff = (1000000000L * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec) / 1e6;
 
-    // cout << "TSP Serial EMST Cost: " << cost << endl;
-    // cout << "TSP Serial EMST Path:";
-    // for(int i = 0; i < bestPath.size(); i++)
-    // {
-    //     cout << " " << bestPath[i];
-    // }
-    // cout << endl;
+    cout << "\n\n Serial EMST Cost: " << cost << endl;
+    cout << " Serial EMST Path:";
+    for(int i = 0; i < bestPath.size(); i++)
+    {
+        cout << " " << bestPath[i];
+    }
+    cout << endl;
 
-    printf("TSP Serial EMST ran in %llu ms for %i cities\n\n", (long long unsigned int)diff, cities.size());
+    printf(" Serial EMST ran in %llu ms for %i cities\n\n\n\n", (long long unsigned int)diff, cities.size());
 
     bestPath.clear();
     cost = 0.00;
+    for(int q = 0; q < length; q++)
+    {
+        visited[q] = false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     //----------------------------- Dynamic Programming ----------------------------------------------
 
@@ -331,18 +471,41 @@ int main(int argc, char* argv[])
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     diff = (1000000000L * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec) / 1e6;
 
-    // cout << "TSP Serial DP Cost: " << cost << endl;
-    // cout << "TSP Serial DP Path:";
-    // for(int i = 0; i < bestPath.size(); i++)
-    // {
-    //     cout << " " << bestPath[i];
-    // }
-    // cout << endl;
+    cout << " Serial DP Cost: " << cost << endl;
+    cout << " Serial DP Path:";
+    for(int i = 0; i < bestPath.size(); i++)
+    {
+        cout << " " << bestPath[i];
+    }
+    cout << endl;
 
-    printf("TSP Serial DP ran in %llu ms for %i cities\n\n", (long long unsigned int)diff, cities.size());
+    printf(" Serial DP ran in %llu ms for %i cities\n\n\n\n", (long long unsigned int)diff, cities.size());
 
     bestPath.clear();
     cost = 0.00;
+    for(int q = 0; q < length; q++)
+    {
+        visited[q] = false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     //--------------------------- MP EMST -----------------------------------------------------------
 
@@ -353,40 +516,158 @@ int main(int argc, char* argv[])
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     diff = (1000000000L * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec) / 1e6;
 
-    // cout << "TSP Parallel EMST Cost: " << cost << endl;
-    // cout << "TSP Parallel EMST Path:";
-    // for(int i = 0; i < bestPath.size(); i++)
-    // {
-    //     cout << " " << bestPath[i];
-    // }
-    // cout << endl;
+    cout << " Parallel EMST Cost: " << cost << endl;
+    cout << " Parallel EMST Path:";
+    for(int i = 0; i < bestPath.size(); i++)
+    {
+        cout << " " << bestPath[i];
+    }
+    cout << endl;
 
-    printf("TSP OpenMP EMST ran in %llu ms for %i cities\n\n", (long long unsigned int)diff, cities.size());
+    printf(" OpenMP EMST ran in %llu ms for %i cities\n\n\n\n", (long long unsigned int)diff, cities.size());
 
     bestPath.clear();
     cost = 0.00;
+    for(int q = 0; q < length; q++)
+    {
+        visited[q] = false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     //----------------------------- MP DP -----------------------------------------------------------
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start); 
 
-    // TSP_MP_DP(distances, length, &bestPath, &cost, location, visited);
+    TSP_MP_DP(distances, length, &bestPath, &cost, location, visited);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     diff = (1000000000L * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec) / 1e6;
 
-    // cout << "TSP Serial DP Cost: " << cost << endl;
-    // cout << "TSP Serial DP Path:";
-    // for(int i = 0; i < bestPath.size(); i++)
-    // {
-    //     cout << " " << bestPath[i];
-    // }
-    // cout << endl;
+    cout << " Parallel DP Cost: " << cost << endl;
+    cout << " Parallel DP Path:";
+    for(int i = 0; i < bestPath.size(); i++)
+    {
+        cout << " " << bestPath[i];
+    }
+    cout << endl;
 
-    printf("TSP OpenMP DP ran in %llu ms for %i cities\n\n", (long long unsigned int)diff, cities.size());
+    printf(" OpenMP DP ran in %llu ms for %i cities\n\n\n\n", (long long unsigned int)diff, cities.size());
 
     bestPath.clear();
     cost = 0.00;
+    for(int q = 0; q < length; q++)
+    {
+        visited[q] = false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        //--------------------------- MPI EMST -----------------------------------------------------------
+
+    int rank, size;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+
+    if(rank == 0)
+    {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);    
+
+        TSP_MPI_EMST(cities, distances, &bestPath, &cost);
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        diff = (1000000000L * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec) / 1e6;
+
+        cout << " MPI EMST Cost: " << cost << endl;
+        cout << " MPI EMST Path:";
+        for(int i = 0; i < bestPath.size(); i++)
+        {
+            cout << " " << bestPath[i];
+        }
+        cout << endl;
+
+        printf(" OpenMP EMST ran in %llu ms for %i cities\n\n\n\n", (long long unsigned int)diff, cities.size());
+    }
+
+
+    bestPath.clear();
+    cost = 0.00;
+    for(int q = 0; q < length; q++)
+    {
+        visited[q] = false;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    //----------------------------- MPI DP -----------------------------------------------------------
+
+    if(rank == 0)
+    {
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start); 
+
+        TSP_MPI_DP(distances, length, &bestPath, &cost, location, visited);
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        diff = (1000000000L * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec) / 1e6;
+
+        cout << " MPI DP Cost: " << cost << endl;
+        cout << " MPI DP Path:";
+        for(int i = 0; i < bestPath.size(); i++)
+        {
+            cout << " " << bestPath[i];
+        }
+        cout << endl;
+
+        printf(" OpenMP DP ran in %llu ms for %i cities\n\n\n\n", (long long unsigned int)diff, cities.size());
+    }
 
     return 0;
 }

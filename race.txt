@@ -1,0 +1,20 @@
+TSP Serial EMST ran in 11 ms for 10 cities
+
+TSP Serial DP Cost: 1198.86
+TSP Serial DP Path: 1 10 5 3 6 9 8 7 4 2
+TSP Serial DP ran in 2 ms for 10 cities
+
+TSP OpenMP EMST ran in 814 ms for 10 cities
+
+TSP OpenMP DP ran in 0 ms for 10 cities
+
+TSP Serial EMST ran in 17 ms for 10 cities
+
+TSP Serial DP Cost: 1198.86
+TSP Serial DP Path: 1 10 5 3 6 9 8 7 4 2
+TSP Serial DP ran in 3 ms for 10 cities
+
+TSP OpenMP EMST ran in 1044 ms for 10 cities
+
+TSP OpenMP DP ran in 0 ms for 10 cities
+
